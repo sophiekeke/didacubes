@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DIDA_59D0 — BLE Protocol Inspector & Fuzzer</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --dim: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --orange: #d29922; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; }
+  h1 { font-size: 18px; color: var(--accent); padding: 16px 20px 8px; }
+  h1 span { color: var(--dim); font-weight: normal; font-size: 12px; }
+  .toolbar { display: flex; gap: 8px; padding: 8px 20px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); }
+  button { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; transition: all .15s; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  button.primary:hover { background: #388bfd; }
+  button.danger { border-color: var(--red); color: var(--red); }
+  button.danger:hover { background: var(--red); color: #fff; }
+  .status { color: var(--dim); font-size: 12px; padding: 0 8px; }
+  .status.connected { color: var(--green); }
+  .status.error { color: var(--red); }
+
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 0; height: calc(100vh - 110px); }
+  .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+  .panel:last-child { border-right: none; }
+  .panel-header { padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: bold; color: var(--accent); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+  .panel-header button { padding: 2px 8px; font-size: 11px; }
+
+  /* Log panel */
+  .log-area { flex: 1; overflow-y: auto; padding: 8px 12px; font-size: 12px; }
+  .log-entry { padding: 2px 0; border-bottom: 1px solid #21262d; display: flex; gap: 8px; }
+  .log-entry .ts { color: var(--dim); white-space: nowrap; min-width: 85px; }
+  .log-entry .dir { min-width: 22px; text-align: center; }
+  .log-entry .dir.rx { color: var(--green); }
+  .log-entry .dir.tx { color: var(--orange); }
+  .log-entry .dir.info { color: var(--accent); }
+  .log-entry .dir.err { color: var(--red); }
+  .log-entry .hex { color: var(--purple); word-break: break-all; }
+  .log-entry .ascii { color: var(--dim); margin-left: 4px; }
+  .log-entry .msg { color: var(--text); word-break: break-all; }
+
+  /* Characteristics table */
+  .char-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .char-table th { text-align: left; padding: 4px 8px; background: var(--surface); color: var(--dim); border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+  .char-table td { padding: 4px 8px; border-bottom: 1px solid #21262d; }
+  .char-table .prop { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; margin: 1px; }
+  .prop-read { background: #1a3a2a; color: var(--green); }
+  .prop-write { background: #3a2a1a; color: var(--orange); }
+  .prop-notify { background: #1a2a3a; color: var(--accent); }
+  .prop-indicate { background: #2a1a3a; color: var(--purple); }
+  .prop-wwr { background: #3a3a1a; color: #e3b341; }
+
+  /* Send panel */
+  .send-section { padding: 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .send-row { display: flex; gap: 6px; margin-bottom: 8px; }
+  .send-row input, .send-row select { background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 6px 10px; border-radius: 4px; font-family: inherit; font-size: 12px; flex: 1; }
+  .send-row input:focus, .send-row select:focus { outline: none; border-color: var(--accent); }
+  .send-row select { flex: 0 0 auto; min-width: 100px; }
+
+  /* Fuzzer */
+  .fuzzer-section { padding: 12px; border-top: 1px solid var(--border); overflow-y: auto; flex: 1; }
+  .fuzz-group { margin-bottom: 12px; }
+  .fuzz-group-title { font-size: 12px; font-weight: bold; color: var(--orange); margin-bottom: 4px; }
+  .fuzz-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+  .fuzz-row label { font-size: 11px; color: var(--dim); flex: 1; }
+  .fuzz-row code { font-size: 11px; color: var(--purple); background: var(--bg); padding: 2px 6px; border-radius: 3px; }
+  .fuzz-row button { padding: 2px 10px; font-size: 11px; }
+  .fuzz-progress { font-size: 11px; color: var(--dim); padding: 4px 0; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; flex-shrink: 0; }
+  .tab { padding: 6px 14px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--dim); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .tab-content.active { display: flex; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  @media (max-width: 900px) {
+    .panels { grid-template-columns: 1fr; height: auto; }
+    .panel { min-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🤖 DIDA_59D0 BLE Inspector <span>Web Bluetooth Protocol Sniffer & Fuzzer</span></h1>
+
+<div class="toolbar">
+  <button class="primary" id="btnConnect" onclick="doConnect()">⚡ Connect</button>
+  <button id="btnDisconnect" onclick="doDisconnect()" disabled>Disconnect</button>
+  <span class="status" id="statusText">Not connected</span>
+  <span style="flex:1"></span>
+  <button onclick="exportLog()">📋 Export Log</button>
+  <button class="danger" onclick="clearLog()">Clear Log</button>
+</div>
+
+<div class="panels">
+  <!-- LEFT PANEL: Log -->
+  <div class="panel">
+    <div class="panel-header">
+      📡 Packet Log
+      <span>
+        <label style="font-weight:normal;font-size:11px;color:var(--dim)">
+          <input type="checkbox" id="chkAutoScroll" checked> Auto-scroll
+        </label>
+      </span>
+    </div>
+    <div class="log-area" id="logArea"></div>
+  </div>
+
+  <!-- RIGHT PANEL: Characteristics / Send / Fuzzer -->
+  <div class="panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('tabChars',this)">Characteristics</div>
+      <div class="tab" onclick="switchTab('tabSend',this)">Send HEX</div>
+      <div class="tab" onclick="switchTab('tabFuzzer',this)">🔬 Fuzzer</div>
+    </div>
+
+    <!-- Tab: Characteristics -->
+    <div class="tab-content active" id="tabChars" style="overflow-y:auto">
+      <table class="char-table">
+        <thead><tr><th>Service</th><th>Characteristic</th><th>Properties</th><th>Action</th></tr></thead>
+        <tbody id="charTableBody">
+          <tr><td colspan="4" style="color:var(--dim);padding:20px;text-align:center">Connect to enumerate characteristics…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tab: Send HEX -->
+    <div class="tab-content" id="tabSend">
+      <div class="send-section">
+        <div style="margin-bottom:8px;color:var(--dim);font-size:11px">
+          Target Characteristic:
+        </div>
+        <div class="send-row">
+          <select id="selWriteChar"></select>
+        </div>
+        <div style="margin-bottom:8px;color:var(--dim);font-size:11px">
+          Write Method:
+        </div>
+        <div class="send-row">
+          <select id="selWriteMethod">
+            <option value="wwr">writeValueWithoutResponse</option>
+            <option value="w">writeValue (with response)</option>
+          </select>
+        </div>
+        <div style="margin-bottom:8px;color:var(--dim);font-size:11px">
+          HEX Payload (e.g. <code style="color:var(--purple)">FF 55 06 00 02 0A 01 64 00</code>):
+        </div>
+        <div class="send-row">
+          <input type="text" id="inputHex" placeholder="FF 55 06 00 02 0A 01 64 00" spellcheck="false"
+                 onkeydown="if(event.key==='Enter')sendHex()">
+          <button class="primary" onclick="sendHex()">Send</button>
+        </div>
+        <div style="margin-top:12px;color:var(--dim);font-size:11px">
+          <b>Quick Presets:</b>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px" id="presetButtons"></div>
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          <button class="primary" onclick="quickStartMotor(1, 100)" style="margin-bottom:4px">🚀 Quick Start: Init + Motor1 FWD 100%</button>
+          <button class="primary" onclick="quickStartMotor(2, 100)" style="margin-bottom:4px">🚀 Quick Start: Init + Motor2 FWD 100%</button>
+          <button class="danger" onclick="quickStartMotor(1, 0); quickStartMotor(2, 0)">⏹ Stop All Motors</button>
+          <div style="color:var(--dim);font-size:11px;margin-top:6px">
+            Quick Start sends: Config packet → wait 300ms → Motor speed command
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Fuzzer -->
+    <div class="tab-content" id="tabFuzzer">
+      <div class="fuzzer-section">
+        <div style="margin-bottom:8px;color:var(--dim);font-size:11px">
+          Automated protocol discovery. Each packet is sent with a <b>300ms</b> delay.<br>
+          Watch the Packet Log for any responses (notify events).
+        </div>
+        <div class="send-row" style="margin-bottom:12px">
+          <select id="selFuzzChar"></select>
+          <select id="selFuzzMethod">
+            <option value="wwr">writeWithoutResponse</option>
+            <option value="w">writeValue</option>
+          </select>
+        </div>
+        <div id="fuzzerGroups"></div>
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          <button class="primary" onclick="runAllFuzzer()" id="btnFuzzAll">🚀 Run ALL Fuzzer Groups</button>
+          <button class="danger" onclick="stopFuzzer()" id="btnFuzzStop" disabled>⏹ Stop</button>
+          <span class="fuzz-progress" id="fuzzProgress"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let bleDevice = null;
+let bleServer = null;
+let characteristics = []; // { svcUUID, charUUID, char, props: [] }
+let logEntries = [];
+let fuzzAbort = false;
+
+const SERVICE_UUIDS = [0xFFE0, 0xFFF0];
+const KNOWN_SERVICE_MAP = {
+  '0000ffe0-0000-1000-8000-00805f9b34fb': 'HM-10 UART (0xFFE0)',
+  '0000fff0-0000-1000-8000-00805f9b34fb': 'Custom (0xFFF0)',
+  '0000ffe5-0000-1000-8000-00805f9b34fb': 'HM-10 Config (0xFFE5)',
+};
+
+// ─── Logging ─────────────────────────────────────────────────────────────────
+function ts() {
+  const d = new Date();
+  return d.toLocaleTimeString('en-US',{hour12:false}) + '.' + String(d.getMilliseconds()).padStart(3,'0');
+}
+
+function log(dir, content, extraClass) {
+  const entry = { time: ts(), dir, content };
+  logEntries.push(entry);
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  let dirClass = dir === 'RX' ? 'rx' : dir === 'TX' ? 'tx' : dir === 'ERR' ? 'err' : 'info';
+  let html = `<span class="ts">${entry.time}</span><span class="dir ${dirClass}">${dir}</span>`;
+  if (dir === 'RX' || dir === 'TX') {
+    const bytes = content instanceof DataView ? dvToArray(content) : (typeof content === 'string' ? content : '');
+    const hexStr = typeof bytes === 'string' ? bytes : bytes.map(b => b.toString(16).toUpperCase().padStart(2,'0')).join(' ');
+    const asciiStr = typeof bytes === 'string' ? '' : bytes.map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '·').join('');
+    html += `<span class="hex">${hexStr}</span>`;
+    if (asciiStr) html += `<span class="ascii">[${asciiStr}]</span>`;
+  } else {
+    html += `<span class="msg">${content}</span>`;
+  }
+  el.innerHTML = html;
+  const area = document.getElementById('logArea');
+  area.appendChild(el);
+  if (document.getElementById('chkAutoScroll').checked) {
+    area.scrollTop = area.scrollHeight;
+  }
+}
+
+function dvToArray(dv) {
+  const arr = [];
+  for (let i = 0; i < dv.byteLength; i++) arr.push(dv.getUint8(i));
+  return arr;
+}
+
+function clearLog() {
+  logEntries = [];
+  document.getElementById('logArea').innerHTML = '';
+}
+
+function exportLog() {
+  const lines = logEntries.map(e => {
+    return `${e.time}\t${e.dir}\t${e.content instanceof DataView ? dvToArray(e.content).map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ') : e.content}`;
+  });
+  const blob = new Blob([lines.join('\n')], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `dida_log_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+  a.click();
+}
+
+// ─── Tab switching ───────────────────────────────────────────────────────────
+function switchTab(tabId, tabEl) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  tabEl.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+// ─── Connection ──────────────────────────────────────────────────────────────
+function setStatus(msg, cls) {
+  const el = document.getElementById('statusText');
+  el.textContent = msg;
+  el.className = 'status ' + (cls || '');
+}
+
+async function doConnect() {
+  try {
+    setStatus('Requesting device…');
+    log('ℹ️', 'Requesting BLE device with namePrefix "DIDA" and service 0xFFE0…');
+
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'DIDA' }],
+      optionalServices: SERVICE_UUIDS
+    });
+
+    log('ℹ️', `Device selected: ${bleDevice.name} (ID: ${bleDevice.id})`);
+    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+    setStatus('Connecting GATT…');
+    log('ℹ️', 'Connecting to GATT server…');
+    bleServer = await bleDevice.gatt.connect();
+    setStatus(`Connected: ${bleDevice.name}`, 'connected');
+    log('ℹ️', `✅ GATT connected to ${bleDevice.name}`);
+
+    document.getElementById('btnConnect').disabled = true;
+    document.getElementById('btnDisconnect').disabled = false;
+
+    await enumerateServices();
+  } catch (err) {
+    setStatus('Connection failed', 'error');
+    log('ERR', `Connection error: ${err.message}`);
+  }
+}
+
+function doDisconnect() {
+  if (bleDevice && bleDevice.gatt.connected) {
+    bleDevice.gatt.disconnect();
+  }
+}
+
+function onDisconnected() {
+  setStatus('Disconnected', 'error');
+  log('ℹ️', '🔌 Device disconnected');
+  document.getElementById('btnConnect').disabled = false;
+  document.getElementById('btnDisconnect').disabled = true;
+  characteristics = [];
+}
+
+// ─── Service & Characteristic Enumeration ────────────────────────────────────
+async function enumerateServices() {
+  characteristics = [];
+  const tbody = document.getElementById('charTableBody');
+  tbody.innerHTML = '';
+  const selWrite = document.getElementById('selWriteChar');
+  const selFuzz = document.getElementById('selFuzzChar');
+  selWrite.innerHTML = '';
+  selFuzz.innerHTML = '';
+
+  log('ℹ️', 'Enumerating services…');
+
+  let services = [];
+  for (const svcUUID of SERVICE_UUIDS) {
+    try {
+      const svc = await bleServer.getPrimaryService(svcUUID);
+      services.push(svc);
+      log('ℹ️', `Found service: ${svc.uuid}`);
+    } catch (e) {
+      log('ℹ️', `Service 0x${svcUUID.toString(16).toUpperCase()} not found (${e.message})`);
+    }
+  }
+
+  // Also try discovering all services
+  try {
+    const allSvcs = await bleServer.getPrimaryServices();
+    for (const s of allSvcs) {
+      if (!services.find(x => x.uuid === s.uuid)) {
+        services.push(s);
+        log('ℹ️', `Discovered additional service: ${s.uuid}`);
+      }
+    }
+  } catch (e) {
+    log('ℹ️', `getPrimaryServices() not supported or failed: ${e.message}`);
+  }
+
+  for (const svc of services) {
+    const svcName = KNOWN_SERVICE_MAP[svc.uuid] || svc.uuid;
+    let chars;
+    try {
+      chars = await svc.getCharacteristics();
+    } catch (e) {
+      log('ERR', `Failed to get characteristics for ${svc.uuid}: ${e.message}`);
+      continue;
+    }
+
+    for (const c of chars) {
+      const props = [];
+      const p = c.properties;
+      if (p.read) props.push('read');
+      if (p.write) props.push('write');
+      if (p.writeWithoutResponse) props.push('writeWithoutResponse');
+      if (p.notify) props.push('notify');
+      if (p.indicate) props.push('indicate');
+      if (p.authenticatedSignedWrites) props.push('authSignedWrite');
+      if (p.broadcast) props.push('broadcast');
+
+      const entry = { svcUUID: svc.uuid, svcName, charUUID: c.uuid, char: c, props };
+      characteristics.push(entry);
+
+      log('ℹ️', `  Char ${c.uuid} — [${props.join(', ')}]`);
+
+      // Table row
+      const tr = document.createElement('tr');
+      const propsHtml = props.map(prop => {
+        let cls = 'prop ';
+        if (prop === 'read') cls += 'prop-read';
+        else if (prop === 'write') cls += 'prop-write';
+        else if (prop === 'writeWithoutResponse') cls += 'prop-wwr';
+        else if (prop === 'notify') cls += 'prop-notify';
+        else if (prop === 'indicate') cls += 'prop-indicate';
+        else cls += 'prop-read';
+        return `<span class="${cls}">${prop}</span>`;
+      }).join('');
+
+      const actions = [];
+      if (p.read) actions.push(`<button onclick="readChar('${c.uuid}')">Read</button>`);
+      if (p.notify || p.indicate) actions.push(`<button onclick="toggleNotify('${c.uuid}',this)">Subscribe</button>`);
+
+      tr.innerHTML = `<td>${svcName}</td><td style="color:var(--purple)">${c.uuid}</td><td>${propsHtml}</td><td>${actions.join(' ')}</td>`;
+      tbody.appendChild(tr);
+
+      // Writable -> add to selects
+      if (p.write || p.writeWithoutResponse) {
+        const shortUUID = c.uuid.substring(4, 8).toUpperCase();
+        const opt1 = new Option(`0x${shortUUID} (${svcName})`, c.uuid);
+        const opt2 = new Option(`0x${shortUUID} (${svcName})`, c.uuid);
+        selWrite.appendChild(opt1);
+        selFuzz.appendChild(opt2);
+      }
+
+      // Auto-subscribe to notify/indicate
+      if (p.notify || p.indicate) {
+        try {
+          await c.startNotifications();
+          c.addEventListener('characteristicvaluechanged', onNotify);
+          log('ℹ️', `  ✅ Auto-subscribed to notifications on ${c.uuid}`);
+        } catch (e) {
+          log('ERR', `  Failed to subscribe ${c.uuid}: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  log('ℹ️', `Enumeration complete. Found ${characteristics.length} characteristic(s).`);
+  buildFuzzerUI();
+  buildPresetButtons();
+}
+
+// ─── Notification handler ────────────────────────────────────────────────────
+let lastRxTime = 0;
+let fuzzRxDetected = false;
+let handshakeAttempted = false;
+
+function onNotify(event) {
+  const dv = event.target.value;
+  log('RX', dv);
+  lastRxTime = Date.now();
+
+  // Auto-stop fuzzer on RX during fuzzing
+  if (!fuzzAbort && document.getElementById('btnFuzzStop') && !document.getElementById('btnFuzzStop').disabled) {
+    fuzzRxDetected = true;
+    fuzzAbort = true;
+    log('ℹ️', '🎉🎉🎉 RX DETECTED DURING FUZZ — AUTO-STOPPED! Check the TX packet right above this RX!');
+  }
+
+  // Auto-handshake: if we see the 45 0C status packet, immediately try responding
+  const bytes = dvToArray(dv);
+  if (!handshakeAttempted && bytes.length >= 2 && bytes[0] === 0x45 && bytes[1] === 0x0C) {
+    handshakeAttempted = true;
+    log('ℹ️', '🤝 Status packet detected! Attempting auto-handshake sequence…');
+    autoHandshake();
+  }
+}
+
+async function autoHandshake() {
+  const charUUID = characteristics.find(c => c.props.includes('writeWithoutResponse'))?.charUUID;
+  if (!charUUID) { log('ERR', 'No writable characteristic for handshake'); return; }
+
+  // Try a sequence of possible handshake responses with delays
+  const sequences = [
+    { label: 'ACK: 45 01 01', bytes: [0x45, 0x01, 0x01] },
+    { label: 'ACK: 45 02 00 03', bytes: [0x45, 0x02, 0x00, 0x03] },
+    { label: 'Version match: 45 02 00 03', bytes: [0x45, 0x02, 0x00, 0x03] },
+    { label: 'Init: 45 01 00', bytes: [0x45, 0x01, 0x00] },
+    { label: 'Echo status back', bytes: [0x45, 0x0C, 0x00, 0x03, 0x00, 0x02, 0x00, 0x01, 0x62, 0x05, 0x00, 0x21, 0x00, 0x4A] },
+    { label: 'Ready: 45 00', bytes: [0x45, 0x00] },
+    { label: 'Connect: 43 01 00', bytes: [0x43, 0x01, 0x00] },
+    { label: 'App hello: 44 49 44 41', bytes: [0x44, 0x49, 0x44, 0x41] },
+    // Then try motor after each handshake attempt
+    { label: 'Motor test: 45 04 01 01 01 64', bytes: [0x45, 0x04, 0x01, 0x01, 0x01, 0x64] },
+    { label: 'Motor test: 45 03 01 01 64', bytes: [0x45, 0x03, 0x01, 0x01, 0x64] },
+    { label: 'Motor raw: 01 01 64', bytes: [0x01, 0x01, 0x64] },
+    { label: 'Motor M: 4D 03 01 01 64', bytes: [0x4D, 0x03, 0x01, 0x01, 0x64] },
+  ];
+
+  for (const seq of sequences) {
+    log('ℹ️', `🤝 Handshake: ${seq.label}`);
+    await sendBytes(new Uint8Array(seq.bytes), charUUID, 'wwr');
+    await sleep(500); // 500ms between handshake packets
+    // Check if we got a response
+    if (Date.now() - lastRxTime < 600) {
+      log('ℹ️', '🎉 Got RX response during handshake! Pausing to analyze…');
+      return;
+    }
+  }
+  log('ℹ️', '🤝 Handshake sequence complete — no response. Try the fuzzer next.');
+}
+
+// ─── Read characteristic ─────────────────────────────────────────────────────
+async function readChar(uuid) {
+  const entry = characteristics.find(c => c.charUUID === uuid);
+  if (!entry) return;
+  try {
+    log('ℹ️', `Reading ${uuid}…`);
+    const val = await entry.char.readValue();
+    log('RX', val);
+  } catch (e) {
+    log('ERR', `Read failed: ${e.message}`);
+  }
+}
+
+// ─── Toggle notify subscription ─────────────────────────────────────────────
+async function toggleNotify(uuid, btn) {
+  const entry = characteristics.find(c => c.charUUID === uuid);
+  if (!entry) return;
+  try {
+    if (btn.textContent === 'Subscribe') {
+      await entry.char.startNotifications();
+      entry.char.addEventListener('characteristicvaluechanged', onNotify);
+      btn.textContent = 'Unsubscribe';
+      btn.classList.add('danger');
+      log('ℹ️', `Subscribed to ${uuid}`);
+    } else {
+      await entry.char.stopNotifications();
+      entry.char.removeEventListener('characteristicvaluechanged', onNotify);
+      btn.textContent = 'Subscribe';
+      btn.classList.remove('danger');
+      log('ℹ️', `Unsubscribed from ${uuid}`);
+    }
+  } catch (e) {
+    log('ERR', `Toggle notify failed: ${e.message}`);
+  }
+}
+
+// ─── Send HEX ────────────────────────────────────────────────────────────────
+function parseHex(str) {
+  str = str.replace(/0x/gi, '').replace(/[^0-9a-fA-F\s,]/g, '');
+  const parts = str.split(/[\s,]+/).filter(Boolean);
+  return new Uint8Array(parts.map(h => parseInt(h, 16)));
+}
+
+async function sendBytes(bytes, charUUID, method) {
+  charUUID = charUUID || document.getElementById('selWriteChar').value;
+  method = method || document.getElementById('selWriteMethod').value;
+  const entry = characteristics.find(c => c.charUUID === charUUID);
+  if (!entry) { log('ERR', 'No writable characteristic selected'); return false; }
+  try {
+    if (method === 'wwr' && entry.props.includes('writeWithoutResponse')) {
+      await entry.char.writeValueWithoutResponse(bytes);
+    } else {
+      await entry.char.writeValueWithResponse(bytes);
+    }
+    const hexStr = Array.from(bytes).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+    log('TX', hexStr);
+    return true;
+  } catch (e) {
+    log('ERR', `Write failed: ${e.message}`);
+    return false;
+  }
+}
+
+async function sendHex() {
+  const input = document.getElementById('inputHex').value.trim();
+  if (!input) return;
+  const bytes = parseHex(input);
+  if (bytes.length === 0) { log('ERR', 'Invalid HEX input'); return; }
+  await sendBytes(bytes);
+}
+
+// ─── Quick Presets ───────────────────────────────────────────────────────────
+// Build a motor SET_SPEED command using the real Dida protocol
+function buildMotorCmd(port, speed) {
+  const speedByte = speed < 0 ? (256 + speed) : speed;
+  const payload = [0x00, 0x02, 0x00, 0x01, 0xFF, 0xFF, 0x65, 0x01, port, 0x31, speedByte & 0xFF];
+  const len = payload.length + 1;
+  let xor = len;
+  for (const b of payload) xor ^= b;
+  xor &= 0xFF;
+  const pkt = [0x45, len, ...payload, xor];
+  return pkt.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+}
+
+const PRESETS = [
+  // ═══════════════════════════════════════════════════════════════
+  // REAL PROTOCOL from DidaCoding APK (electronic_logic_engine.js)
+  // Format: 0x45 [len] [payload...] [xor_checksum]
+  // Checksum = XOR of (len ^ payload bytes)
+  // ═══════════════════════════════════════════════════════════════
+
+  // Motor config packets (MUST send first to init the hub)
+  { label: '🔧 Init Motor Config 1', hex: '45 0E 00 03 00 01 00 01 21 65 01 01 65 02 02 2C' },
+  { label: '🔧 Init Motor Config 2', hex: '45 0E 00 03 00 01 00 03 21 65 01 01 65 02 02 2E' },
+
+  // Motor speed commands — constructed from protocol:
+  // serialize: [pkgnum=0] [bluecommand] [bluetoothId=0] [ONLINEFLAG=1] [mainid] [subid] [type=0x65] [subtype=0x01] [port] [cmd=0x31] [speed]
+  // then addCheck wraps: 0x45 [len] [payload] [xor]
+  // For motor on main bluetooth (bluecommand=0x02), port 1, speed 100:
+  // payload = [00, 02, 00, 01, FF, FF, 65, 01, 01, 31, 64]
+  // len = 12, xor = 12^0^2^0^1^FF^FF^65^01^01^31^64
+  { label: '⚙️ Motor1 FWD 100%', hex: buildMotorCmd(1, 100) },
+  { label: '⚙️ Motor1 FWD 50%', hex: buildMotorCmd(1, 50) },
+  { label: '⚙️ Motor1 STOP', hex: buildMotorCmd(1, 0) },
+  { label: '⚙️ Motor1 REV 100%', hex: buildMotorCmd(1, -100) },
+  { label: '⚙️ Motor2 FWD 100%', hex: buildMotorCmd(2, 100) },
+  { label: '⚙️ Motor2 STOP', hex: buildMotorCmd(2, 0) },
+
+  // Button config (to detect button press on hub)
+  { label: '🔧 Init Button', hex: '45 0E 00 03 00 01 00 04 21 62 05 01 62 05 02 2A' },
+  // LED config
+  { label: '🔧 Init LED', hex: '45 0E 00 03 01 01 00 01 21 63 01 01 63 06 02 29' },
+  // Buzzer config
+  { label: '🔧 Init Buzzer', hex: '45 0B 00 03 00 01 02 01 21 64 01 01 4F' },
+];
+
+async function quickStartMotor(port, speed) {
+  const charUUID = characteristics.find(c => c.props.includes('writeWithoutResponse'))?.charUUID;
+  if (!charUUID) { log('ERR', 'Not connected or no writable characteristic'); return; }
+
+  log('ℹ️', `🚀 Quick Start: Full init sequence then motor port=${port} speed=${speed}…`);
+
+  // Step 1: SETCONNECTINTERVAL (sound packet, header 0x46)
+  // serializeSoundbuf: [pkgnum=0x00, type=0x25, data=0x01 (Android)]
+  // addCheck('sound'): [0x46, len, payload, xor]
+  // payload = [0x00, 0x25, 0x01], len = 4
+  // xor = 4 ^ 0x00 ^ 0x25 ^ 0x01 = 0x20
+  const initConnect = new Uint8Array([0x46, 0x04, 0x00, 0x25, 0x01, 0x20]);
+  log('ℹ️', '  → Sending SETCONNECTINTERVAL (sound packet)');
+  await sendBytes(initConnect, charUUID, 'wwr');
+  await sleep(300);
+
+  // Step 2: ARANGE command (polls for connected blocks, app sends this every 500ms)
+  // serialize: [pkgnum=0, bluecommand=0xAA, btId=0, online=0x01, mainid=0xFF, subid=0xFF, type=0x21, data: 0x00, 0x00]
+  // payload = [0x00, 0xAA, 0x00, 0x01, 0xFF, 0xFF, 0x21, 0x00, 0x00]
+  // addCheck('data'): len = 10, xor = 10 ^ 0x00 ^ 0xAA ^ 0x00 ^ 0x01 ^ 0xFF ^ 0xFF ^ 0x21 ^ 0x00 ^ 0x00
+  {
+    const payload = [0x00, 0xAA, 0x00, 0x01, 0xFF, 0xFF, 0x21, 0x00, 0x00];
+    const len = payload.length + 1;
+    let xor = len;
+    for (const b of payload) xor ^= b;
+    const arange = new Uint8Array([0x45, len, ...payload, xor & 0xFF]);
+    log('ℹ️', '  → Sending ARANGE (block discovery)');
+    await sendBytes(arange, charUUID, 'wwr');
+    await sleep(500);
+  }
+
+  // Step 2b: Send ARANGE again (app sends it repeatedly)
+  {
+    const payload = [0x00, 0xAA, 0x00, 0x01, 0xFF, 0xFF, 0x21, 0x00, 0x00];
+    const len = payload.length + 1;
+    let xor = len;
+    for (const b of payload) xor ^= b;
+    const arange = new Uint8Array([0x45, len, ...payload, xor & 0xFF]);
+    await sendBytes(arange, charUUID, 'wwr');
+    await sleep(500);
+  }
+
+  // Step 2c: Send ARANGE a third time
+  {
+    const payload = [0x00, 0xAA, 0x00, 0x01, 0xFF, 0xFF, 0x21, 0x00, 0x00];
+    const len = payload.length + 1;
+    let xor = len;
+    for (const b of payload) xor ^= b;
+    const arange = new Uint8Array([0x45, len, ...payload, xor & 0xFF]);
+    await sendBytes(arange, charUUID, 'wwr');
+    await sleep(500);
+  }
+
+  // Step 3: GETBATTERY
+  // serialize: [pkgnum=0, bluecommand=0x02, btId=0, online=0x01, mainid=0x00, subid=0x01, type=0x11]
+  {
+    const payload = [0x00, 0x02, 0x00, 0x01, 0x00, 0x01, 0x11];
+    const len = payload.length + 1;
+    let xor = len;
+    for (const b of payload) xor ^= b;
+    const battery = new Uint8Array([0x45, len, ...payload, xor & 0xFF]);
+    log('ℹ️', '  → Sending GETBATTERY');
+    await sendBytes(battery, charUUID, 'wwr');
+    await sleep(300);
+  }
+
+  // Step 4: Motor config packets (from APK test data)
+  const config1 = new Uint8Array([0x45, 0x0E, 0x00, 0x03, 0x00, 0x01, 0x00, 0x01, 0x21, 0x65, 0x01, 0x01, 0x65, 0x02, 0x02, 0x2C]);
+  const config2 = new Uint8Array([0x45, 0x0E, 0x00, 0x03, 0x00, 0x01, 0x00, 0x03, 0x21, 0x65, 0x01, 0x01, 0x65, 0x02, 0x02, 0x2E]);
+  log('ℹ️', '  → Sending motor config 1 & 2');
+  await sendBytes(config1, charUUID, 'wwr');
+  await sleep(200);
+  await sendBytes(config2, charUUID, 'wwr');
+  await sleep(300);
+
+  // Step 5: Motor speed command
+  // Using bluecommand=0x02 (main bluetooth), mainid from config response
+  // Try with mainid=0x00, subid=0x01 (first block on main board)
+  if (speed !== 0 || true) {
+    const speedByte = speed < 0 ? (256 + speed) : speed;
+    // Try multiple mainid/subid combos since we don't know the assigned values
+    const combos = [
+      [0x00, 0x01],  // first block
+      [0x00, 0x02],  // second block
+      [0xFF, 0xFF],  // broadcast/wildcard
+      [0x01, 0x01],  // alt
+      [0x01, 0x02],  // alt
+    ];
+    for (const [mid, sid] of combos) {
+      const payload = [0x00, 0x02, 0x00, 0x01, mid, sid, 0x65, 0x01, port, 0x31, speedByte & 0xFF];
+      const len = payload.length + 1;
+      let xor = len;
+      for (const b of payload) xor ^= b;
+      const cmd = new Uint8Array([0x45, len, ...payload, xor & 0xFF]);
+      log('ℹ️', `  → Motor cmd: mainid=0x${mid.toString(16)} subid=0x${sid.toString(16)} port=${port} speed=${speed}`);
+      await sendBytes(cmd, charUUID, 'wwr');
+      await sleep(200);
+    }
+  }
+
+  log('ℹ️', `🚀 Sequence complete. Check if motor moved!`);
+}
+
+function buildPresetButtons() {
+  const div = document.getElementById('presetButtons');
+  div.innerHTML = '';
+  for (const p of PRESETS) {
+    const btn = document.createElement('button');
+    btn.textContent = p.label;
+    btn.title = p.hex;
+    btn.onclick = () => {
+      document.getElementById('inputHex').value = p.hex;
+      sendHex();
+    };
+    div.appendChild(btn);
+  }
+}
+
+// ─── Fuzzer ──────────────────────────────────────────────────────────────────
+function xorChecksum(bytes) { return bytes.reduce((a, b) => a ^ b, 0) & 0xFF; }
+function sumChecksum(bytes) { return bytes.reduce((a, b) => a + b, 0) & 0xFF; }
+function invChecksum(bytes) { return (~bytes.reduce((a, b) => a + b, 0)) & 0xFF; }
+
+const FUZZ_GROUPS = [
+  // ═══════════════════════════════════════════════════════════════
+  // ROUND 2: Smart fuzzing based on captured RX packet analysis
+  // RX: 45 0C 00 03 00 02 00 01 62 05 00 21 00 4A
+  // Hypothesis: 45 = header/type, 0C = length, ... , 4A = checksum
+  // ═══════════════════════════════════════════════════════════════
+
+  {
+    name: '🤝 1. Handshake / Init / Echo',
+    desc: 'Many hubs require a handshake before accepting motor commands. Try echoing, ACKing, and common init sequences.',
+    packets: (() => {
+      const pkts = [];
+      // Echo the exact status packet back
+      pkts.push({ label: 'Echo full status packet', bytes: new Uint8Array([0x45, 0x0C, 0x00, 0x03, 0x00, 0x02, 0x00, 0x01, 0x62, 0x05, 0x00, 0x21, 0x00, 0x4A]) });
+      // Short ACK patterns
+      pkts.push({ label: '45 01 (type+minimal)', bytes: new Uint8Array([0x45, 0x01]) });
+      pkts.push({ label: '45 00 (type+null)', bytes: new Uint8Array([0x45, 0x00]) });
+      pkts.push({ label: '45 (just header)', bytes: new Uint8Array([0x45]) });
+      // Common handshake bytes
+      for (const b of [0x00, 0x01, 0x02, 0x0A, 0x0D, 0x10, 0x20, 0x30, 0x55, 0xAA, 0xFF]) {
+        pkts.push({ label: `Single byte 0x${b.toString(16).toUpperCase()}`, bytes: new Uint8Array([b]) });
+      }
+      // Two-byte handshakes
+      for (const b of [0x00, 0x01, 0xFF]) {
+        pkts.push({ label: `45 ${b.toString(16).padStart(2,'0')}`, bytes: new Uint8Array([0x45, b]) });
+      }
+      // Common init strings
+      pkts.push({ label: 'INIT (ASCII)', bytes: new Uint8Array([0x49, 0x4E, 0x49, 0x54]) });
+      pkts.push({ label: 'CONN (ASCII)', bytes: new Uint8Array([0x43, 0x4F, 0x4E, 0x4E]) });
+      pkts.push({ label: 'DIDA (ASCII)', bytes: new Uint8Array([0x44, 0x49, 0x44, 0x41]) });
+      pkts.push({ label: 'OK (ASCII)', bytes: new Uint8Array([0x4F, 0x4B]) });
+      pkts.push({ label: 'HELLO\\r\\n', bytes: new Uint8Array([0x48, 0x45, 0x4C, 0x4C, 0x4F, 0x0D, 0x0A]) });
+      return pkts;
+    })()
+  },
+
+  {
+    name: '🧠 2. 45-Header Protocol (mirroring RX format)',
+    desc: 'If RX uses 45+len, TX probably does too. 45 <len> <cmd> <port> <dir> <speed> [checksum]',
+    packets: (() => {
+      const pkts = [];
+      // Hypothesis: 45 <len> <cmdType> <port> <direction> <speed>
+      // cmdType guesses: 01=motor, 02=LED, 03=query, 04=set, 0A=motor
+      const cmdTypes = [0x01, 0x02, 0x03, 0x04, 0x05, 0x0A, 0x10, 0x20];
+      for (const cmd of cmdTypes) {
+        for (const port of [0x01, 0x02, 0x00]) {
+          // Forward 100%
+          const fwd = [cmd, port, 0x01, 0x64];
+          const fwdPkt = [0x45, fwd.length, ...fwd];
+          pkts.push({ label: `45 cmd=0x${cmd.toString(16)} p=${port} FWD100`, bytes: new Uint8Array(fwdPkt) });
+          // With XOR checksum
+          pkts.push({ label: `45 cmd=0x${cmd.toString(16)} p=${port} FWD100 +xor`, bytes: new Uint8Array([...fwdPkt, xorChecksum(fwdPkt)]) });
+          // With SUM checksum
+          pkts.push({ label: `45 cmd=0x${cmd.toString(16)} p=${port} FWD100 +sum`, bytes: new Uint8Array([...fwdPkt, sumChecksum(fwdPkt)]) });
+        }
+      }
+      // Stop commands
+      for (const cmd of [0x01, 0x02, 0x0A]) {
+        for (const port of [0x01, 0x02]) {
+          const stop = [cmd, port, 0x00, 0x00];
+          const stopPkt = [0x45, stop.length, ...stop];
+          pkts.push({ label: `45 cmd=0x${cmd.toString(16)} p=${port} STOP`, bytes: new Uint8Array(stopPkt) });
+          pkts.push({ label: `45 cmd=0x${cmd.toString(16)} p=${port} STOP +xor`, bytes: new Uint8Array([...stopPkt, xorChecksum(stopPkt)]) });
+        }
+      }
+      return pkts;
+    })()
+  },
+
+  {
+    name: '🔬 3. Header Byte Scan (0x00–0xFF)',
+    desc: 'Send every possible single-header byte + fixed motor payload to find which header the hub accepts',
+    packets: (() => {
+      const pkts = [];
+      // For each possible header byte, send: <hdr> <len=4> <01> <01> <01> <64>
+      // meaning: motor, port1, forward, speed100
+      const motorPayload = [0x04, 0x01, 0x01, 0x01, 0x64];
+      for (let h = 0x00; h <= 0xFF; h += 1) {
+        // Skip headers already tested in round 1
+        if ([0xAA, 0x55, 0xA5, 0x5A, 0xFF, 0xFE, 0xEF, 0xFA, 0xAF, 0xFD, 0xDF, 0xFC, 0xCF, 0xCC, 0xDD].includes(h)) continue;
+        pkts.push({ label: `hdr=0x${h.toString(16).toUpperCase().padStart(2,'0')} motor`, bytes: new Uint8Array([h, ...motorPayload]) });
+      }
+      return pkts;
+    })()
+  },
+
+  {
+    name: '📊 4. Status Query / Ping Variations',
+    desc: 'Try to provoke a second status response from the hub',
+    packets: (() => {
+      const pkts = [];
+      // Query-type commands: various short packets that might ask for status
+      // RX started with 45 0C — try asking for it
+      pkts.push({ label: 'Request: 45 02 00 00', bytes: new Uint8Array([0x45, 0x02, 0x00, 0x00]) });
+      pkts.push({ label: 'Request: 45 02 00 01', bytes: new Uint8Array([0x45, 0x02, 0x00, 0x01]) });
+      pkts.push({ label: 'Request: 45 02 00 03', bytes: new Uint8Array([0x45, 0x02, 0x00, 0x03]) });
+      pkts.push({ label: 'Request: 45 01 00', bytes: new Uint8Array([0x45, 0x01, 0x00]) });
+      pkts.push({ label: 'Request: 45 01 01', bytes: new Uint8Array([0x45, 0x01, 0x01]) });
+      pkts.push({ label: 'Request: 45 01 FF', bytes: new Uint8Array([0x45, 0x01, 0xFF]) });
+      // Try different "type" bytes with query format
+      for (const type of [0x00, 0x01, 0x02, 0x03, 0x10, 0x20, 0x30, 0x40, 0x45, 0x50, 0x60, 0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xE0, 0xF0]) {
+        pkts.push({ label: `Query: ${type.toString(16)} 01 00`, bytes: new Uint8Array([type, 0x01, 0x00]) });
+        pkts.push({ label: `Query: ${type.toString(16)} 02 00 00`, bytes: new Uint8Array([type, 0x02, 0x00, 0x00]) });
+      }
+      // Keepalive / heartbeat patterns
+      pkts.push({ label: 'Keepalive: 00 00', bytes: new Uint8Array([0x00, 0x00]) });
+      pkts.push({ label: 'Keepalive: FF FF', bytes: new Uint8Array([0xFF, 0xFF]) });
+      pkts.push({ label: 'Keepalive: 45 45', bytes: new Uint8Array([0x45, 0x45]) });
+      return pkts;
+    })()
+  },
+
+  {
+    name: '🎯 5. Checksum-Validated 45-Protocol (deep)',
+    desc: 'RX checksum analysis: testing if 0x4A is sum, xor, or crc8 of the packet',
+    packets: (() => {
+      const pkts = [];
+      // The RX packet: 45 0C 00 03 00 02 00 01 62 05 00 21 00 4A
+      // Let's verify checksums:
+      // XOR of [45 0C 00 03 00 02 00 01 62 05 00 21 00] = 0x4F (not 4A)
+      // SUM of [0C 00 03 00 02 00 01 62 05 00 21 00] mod 256 = 0x94 (not 4A)
+      // SUM of [00 03 00 02 00 01 62 05 00 21 00] mod 256 = 0x88 (not 4A)
+      // Maybe: XOR of payload only [00 03 00 02 00 01 62 05 00 21 00] = 0x46 (not 4A)
+      // Maybe: last byte = XOR of [03 00 02 00 01 62 05 00 21 00] = 0x44 (not 4A)
+      // Maybe: 4A is NOT a checksum, it's data
+      // Strategy: try all checksum variants for motor commands
+
+      const checksumFns = [
+        { name: 'xor-all', fn: (pkt) => xorChecksum(pkt) },
+        { name: 'xor-payload', fn: (pkt) => xorChecksum(pkt.slice(2)) },
+        { name: 'sum-all', fn: (pkt) => sumChecksum(pkt) },
+        { name: 'sum-payload', fn: (pkt) => sumChecksum(pkt.slice(2)) },
+        { name: 'inv-sum', fn: (pkt) => invChecksum(pkt) },
+        { name: 'none', fn: () => null },
+      ];
+
+      // 45 <len> <cmd> <subcmd> <port> <speed>
+      for (const cmd of [0x01, 0x02, 0x03]) {
+        for (const subcmd of [0x01, 0x02, 0x00]) {
+          for (const port of [0x01, 0x02]) {
+            const speed = 0x64;
+            const payload = [cmd, subcmd, port, speed];
+            const pkt = [0x45, payload.length, ...payload];
+            for (const chk of checksumFns) {
+              const c = chk.fn(pkt);
+              const final = c !== null ? [...pkt, c] : pkt;
+              pkts.push({ label: `45 ${cmd}/${subcmd} p=${port} s=100 ${chk.name}`, bytes: new Uint8Array(final) });
+            }
+          }
+        }
+      }
+      return pkts;
+    })()
+  },
+
+  {
+    name: '🔥 6. Brute Force Short Commands (2–4 bytes)',
+    desc: 'Exhaustive scan of compact command formats: <cmd> <port> <speed> with common byte values',
+    packets: (() => {
+      const pkts = [];
+      // 2-byte: <port> <speed>
+      for (const p of [0x00, 0x01, 0x02, 0x03, 0x04, 0x0A, 0x10, 0x41, 0x42]) {
+        for (const s of [0x64, 0xFF, 0x80, 0x01, 0x00]) {
+          pkts.push({ label: `2b: ${p.toString(16)}/${s.toString(16)}`, bytes: new Uint8Array([p, s]) });
+        }
+      }
+      // 3-byte: <cmd> <port> <speed>
+      for (const c of [0x01, 0x02, 0x03, 0x04, 0x10, 0x20, 0x41, 0x42, 0x43, 0x44, 0x45, 0x4D, 0x80, 0x90, 0xA1, 0xB1, 0xC1]) {
+        for (const p of [0x01, 0x02]) {
+          pkts.push({ label: `3b: ${c.toString(16)}/${p}/${0x64}`, bytes: new Uint8Array([c, p, 0x64]) });
+        }
+      }
+      // 4-byte: <cmd> <port> <dir> <speed>
+      for (const c of [0x01, 0x02, 0x10, 0x41, 0x42, 0x43, 0x44, 0x45, 0x4D, 0x80, 0xA0, 0xC0]) {
+        for (const p of [0x01, 0x02]) {
+          pkts.push({ label: `4b: ${c.toString(16)}/${p}/01/64`, bytes: new Uint8Array([c, p, 0x01, 0x64]) });
+          pkts.push({ label: `4b: ${c.toString(16)}/${p}/02/64`, bytes: new Uint8Array([c, p, 0x02, 0x64]) });
+        }
+      }
+      return pkts;
+    })()
+  },
+
+  {
+    name: '💡 7. LED / Buzzer / Special Commands',
+    desc: 'Try to trigger visible feedback (LED color, buzzer) to confirm we found a valid command format',
+    packets: (() => {
+      const pkts = [];
+      // LED commands often use different cmd byte
+      // 45-header format: 45 <len> <cmd=LED> <color/mode> ...
+      for (const cmd of [0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x11, 0x12, 0x15, 0x20, 0x30, 0x40]) {
+        const pkt = [0x45, 0x03, cmd, 0x01, 0xFF];
+        pkts.push({ label: `45 LED? cmd=0x${cmd.toString(16)} val=FF`, bytes: new Uint8Array(pkt) });
+        pkts.push({ label: `45 LED? cmd=0x${cmd.toString(16)} val=FF +xor`, bytes: new Uint8Array([...pkt, xorChecksum(pkt)]) });
+      }
+      // Buzzer patterns
+      for (const cmd of [0x06, 0x07, 0x0B, 0x15, 0x30]) {
+        pkts.push({ label: `45 Buzz? cmd=0x${cmd.toString(16)}`, bytes: new Uint8Array([0x45, 0x02, cmd, 0x01]) });
+      }
+      // Try without 45 header too
+      for (const cmd of [0x05, 0x06, 0x07, 0x08, 0x0B, 0x10, 0x20]) {
+        pkts.push({ label: `No-hdr LED? ${cmd.toString(16)} 01 FF`, bytes: new Uint8Array([cmd, 0x01, 0xFF]) });
+        pkts.push({ label: `No-hdr LED? ${cmd.toString(16)} FF 00 00`, bytes: new Uint8Array([cmd, 0xFF, 0x00, 0x00]) });
+      }
+      return pkts;
+    })()
+  },
+
+  {
+    name: '🔄 8. Reconnect Trigger & Version Query',
+    desc: 'Some hubs need an app version handshake or specific init sequence before accepting commands',
+    packets: (() => {
+      const pkts = [];
+      // App version / protocol negotiation patterns
+      // The "03" in status packet might be protocol version 3
+      pkts.push({ label: 'Version handshake v3', bytes: new Uint8Array([0x45, 0x02, 0x00, 0x03]) });
+      pkts.push({ label: 'Version handshake v1', bytes: new Uint8Array([0x45, 0x02, 0x00, 0x01]) });
+      pkts.push({ label: 'Version handshake v2', bytes: new Uint8Array([0x45, 0x02, 0x00, 0x02]) });
+      // App ID / auth handshakes
+      pkts.push({ label: 'Auth: DIDA\\0', bytes: new Uint8Array([0x44, 0x49, 0x44, 0x41, 0x00]) });
+      pkts.push({ label: 'Auth: LECT\\0', bytes: new Uint8Array([0x4C, 0x45, 0x43, 0x54, 0x00]) });
+      // Try 0x45 as ASCII 'E' — maybe commands use different letter headers
+      // E=enumerate/status, M=motor, L=LED, S=sensor, C=connect
+      for (const hdr of [0x4D/*M*/, 0x4C/*L*/, 0x53/*S*/, 0x43/*C*/, 0x52/*R*/, 0x50/*P*/, 0x44/*D*/, 0x42/*B*/]) {
+        const ch = String.fromCharCode(hdr);
+        // Motor command: M <len> <port> <dir> <speed>
+        const mPkt = [hdr, 0x03, 0x01, 0x01, 0x64];
+        pkts.push({ label: `'${ch}' motor p1 fwd`, bytes: new Uint8Array(mPkt) });
+        pkts.push({ label: `'${ch}' motor p1 fwd +xor`, bytes: new Uint8Array([...mPkt, xorChecksum(mPkt)]) });
+        pkts.push({ label: `'${ch}' motor p1 fwd +sum`, bytes: new Uint8Array([...mPkt, sumChecksum(mPkt)]) });
+        // Also try: <hdr> <port> <speed> (no length byte)
+        pkts.push({ label: `'${ch}' short p1 s100`, bytes: new Uint8Array([hdr, 0x01, 0x64]) });
+        pkts.push({ label: `'${ch}' short p2 s100`, bytes: new Uint8Array([hdr, 0x02, 0x64]) });
+      }
+      return pkts;
+    })()
+  },
+
+  {
+    name: '⚡ 9. Speed Byte Encoding Variations',
+    desc: 'Maybe speed is not 0x64=100. Test signed, percentage, PWM, and mapped encodings.',
+    packets: (() => {
+      const pkts = [];
+      // Test different speed encodings with 45-header motor format
+      // 45 <len> 01 <port> <speed bytes...>
+      const speeds = [
+        { label: '255 (max byte)', bytes: [0xFF] },
+        { label: '128 (50%?)', bytes: [0x80] },
+        { label: '200 (PWM?)', bytes: [0xC8] },
+        { label: '1000 LE', bytes: [0xE8, 0x03] },
+        { label: '1000 BE', bytes: [0x03, 0xE8] },
+        { label: '255 LE 16bit', bytes: [0xFF, 0x00] },
+        { label: '100 LE 16bit', bytes: [0x64, 0x00] },
+        { label: '100 BE 16bit', bytes: [0x00, 0x64] },
+        { label: '-100 signed', bytes: [0x9C] },
+        { label: '-100 16bit LE', bytes: [0x9C, 0xFF] },
+      ];
+      for (const port of [0x01, 0x02]) {
+        for (const sp of speeds) {
+          const payload = [0x01, port, ...sp.bytes];
+          const pkt = [0x45, payload.length, ...payload];
+          pkts.push({ label: `45 p=${port} ${sp.label}`, bytes: new Uint8Array(pkt) });
+          pkts.push({ label: `45 p=${port} ${sp.label} +xor`, bytes: new Uint8Array([...pkt, xorChecksum(pkt)]) });
+        }
+      }
+      return pkts;
+    })()
+  },
+
+  {
+    name: '🧪 10. Raw Byte Flood (panic test)',
+    desc: 'Send various "all bytes" patterns. If the motor twitches even briefly, we know the format.',
+    packets: (() => {
+      const pkts = [];
+      // Full 0xFF flood
+      for (let len = 1; len <= 8; len++) {
+        pkts.push({ label: `FF x${len}`, bytes: new Uint8Array(new Array(len).fill(0xFF)) });
+      }
+      // Incrementing bytes
+      pkts.push({ label: '01 02 03 04 05', bytes: new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05]) });
+      pkts.push({ label: '00 01 02 03 04 05 06 07', bytes: new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]) });
+      // All zeros
+      for (let len = 1; len <= 8; len++) {
+        pkts.push({ label: `00 x${len}`, bytes: new Uint8Array(new Array(len).fill(0x00)) });
+      }
+      // Some toys use newline-terminated ASCII numbers
+      pkts.push({ label: '"100\\n"', bytes: new Uint8Array([0x31, 0x30, 0x30, 0x0A]) });
+      pkts.push({ label: '"1,100\\n"', bytes: new Uint8Array([0x31, 0x2C, 0x31, 0x30, 0x30, 0x0A]) });
+      pkts.push({ label: '"2,100\\n"', bytes: new Uint8Array([0x32, 0x2C, 0x31, 0x30, 0x30, 0x0A]) });
+      pkts.push({ label: '"M,1,100\\n"', bytes: new Uint8Array([0x4D, 0x2C, 0x31, 0x2C, 0x31, 0x30, 0x30, 0x0A]) });
+      pkts.push({ label: '"{M:1,S:100}\\n"', bytes: new Uint8Array([0x7B, 0x4D, 0x3A, 0x31, 0x2C, 0x53, 0x3A, 0x31, 0x30, 0x30, 0x7D, 0x0A]) });
+      return pkts;
+    })()
+  },
+];
+
+function buildFuzzerUI() {
+  const container = document.getElementById('fuzzerGroups');
+  container.innerHTML = '';
+  for (let gi = 0; gi < FUZZ_GROUPS.length; gi++) {
+    const g = FUZZ_GROUPS[gi];
+    const div = document.createElement('div');
+    div.className = 'fuzz-group';
+    div.innerHTML = `
+      <div class="fuzz-group-title">${g.name} <span style="color:var(--dim);font-weight:normal;font-size:11px">(${g.packets.length} packets)</span></div>
+      <div style="color:var(--dim);font-size:11px;margin-bottom:4px">${g.desc}</div>
+      <button onclick="runFuzzerGroup(${gi})" id="btnFuzzG${gi}">▶ Run Group</button>
+      <span class="fuzz-progress" id="fuzzGProgress${gi}"></span>
+    `;
+    container.appendChild(div);
+  }
+}
+
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runFuzzerGroup(gi) {
+  const g = FUZZ_GROUPS[gi];
+  const charUUID = document.getElementById('selFuzzChar').value;
+  const method = document.getElementById('selFuzzMethod').value;
+  if (!charUUID) { log('ERR', 'No writable characteristic selected for fuzzing'); return; }
+
+  fuzzAbort = false;
+  fuzzRxDetected = false;
+  const progEl = document.getElementById(`fuzzGProgress${gi}`);
+  const btn = document.getElementById(`btnFuzzG${gi}`);
+  btn.disabled = true;
+  document.getElementById('btnFuzzStop').disabled = false;
+
+  log('ℹ️', `━━━ Starting fuzzer group: ${g.name} (${g.packets.length} packets) ━━━`);
+
+  for (let i = 0; i < g.packets.length; i++) {
+    if (fuzzAbort) { log('ℹ️', '⏹ Fuzzer stopped by user'); break; }
+    const pkt = g.packets[i];
+    progEl.textContent = `${i+1}/${g.packets.length}: ${pkt.label}`;
+    log('ℹ️', `Fuzz [${i+1}/${g.packets.length}]: ${pkt.label}`);
+    await sendBytes(pkt.bytes, charUUID, method);
+    await sleep(300);
+  }
+
+  progEl.textContent = fuzzRxDetected ? '🎉 RX DETECTED — STOPPED!' : fuzzAbort ? 'Stopped' : 'Done ✅';
+  btn.disabled = false;
+  document.getElementById('btnFuzzStop').disabled = true;
+  log('ℹ️', fuzzRxDetected
+    ? `━━━ 🎉 FUZZER HIT! RX response detected in: ${g.name} ━━━`
+    : `━━━ Fuzzer group finished: ${g.name} ━━━`);
+}
+
+async function runAllFuzzer() {
+  fuzzAbort = false;
+  document.getElementById('btnFuzzAll').disabled = true;
+  document.getElementById('btnFuzzStop').disabled = false;
+  const progEl = document.getElementById('fuzzProgress');
+
+  for (let gi = 0; gi < FUZZ_GROUPS.length; gi++) {
+    if (fuzzAbort) break;
+    progEl.textContent = `Group ${gi+1}/${FUZZ_GROUPS.length}: ${FUZZ_GROUPS[gi].name}`;
+    await runFuzzerGroup(gi);
+  }
+
+  progEl.textContent = fuzzAbort ? 'All stopped' : 'All groups complete ✅';
+  document.getElementById('btnFuzzAll').disabled = false;
+  document.getElementById('btnFuzzStop').disabled = true;
+}
+
+function stopFuzzer() {
+  fuzzAbort = true;
+  log('ℹ️', '⏹ Stop requested…');
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+buildPresetButtons();
+
+// Check Web Bluetooth availability
+if (!navigator.bluetooth) {
+  log('ERR', '❌ Web Bluetooth API is NOT available in this browser. Use Chrome/Edge on macOS/Windows/ChromeOS/Android with Experimental Web Platform Features enabled if needed.');
+  setStatus('Web Bluetooth not available', 'error');
+  document.getElementById('btnConnect').disabled = true;
+} else {
+  log('ℹ️', '✅ Web Bluetooth API is available. Click "Connect" to begin.');
+}
+</script>
+</body>
+</html>
