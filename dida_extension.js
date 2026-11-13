@@ -264,11 +264,26 @@
           return;
         }
 
-        // Request device
-        bleDevice = await navigator.bluetooth.requestDevice({
-          filters: [{ namePrefix: 'DIDA' }],
-          optionalServices: [BLE_SERVICE],
-        });
+        // Request device — try multiple methods for browser compatibility (Chrome vs Bluefy)
+        try {
+          bleDevice = await navigator.bluetooth.requestDevice({
+            filters: [{ namePrefix: 'DIDA' }],
+            optionalServices: [BLE_SERVICE],
+          });
+        } catch (e1) {
+          console.log('Filter method failed, trying acceptAllDevices…');
+          try {
+            bleDevice = await navigator.bluetooth.requestDevice({
+              acceptAllDevices: true,
+              optionalServices: [BLE_SERVICE],
+            });
+          } catch (e2) {
+            console.log('acceptAllDevices failed, trying service filter…');
+            bleDevice = await navigator.bluetooth.requestDevice({
+              filters: [{ services: [BLE_SERVICE] }],
+            });
+          }
+        }
 
         bleDevice.addEventListener('gattserverdisconnected', () => {
           isConnected = false;
