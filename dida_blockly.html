@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🤖 DidaCubes Block Coder</title>
+<script src="https://unpkg.com/blockly/blockly.min.js"></script>
+<style>
+  /* ===== RESET & BASE ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
+  body {
+    display: flex; flex-direction: column;
+    background: linear-gradient(135deg, #e0f7fa 0%, #fff9c4 50%, #f3e5f5 100%);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* ===== TOP TOOLBAR ===== */
+  #toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; gap: 8px;
+    background: linear-gradient(90deg, #6a1b9a, #1565c0);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+    z-index: 100; flex-shrink: 0;
+  }
+  #toolbar .title {
+    color: #fff; font-size: 1.2em; font-weight: 800;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #toolbar .btn-group { display: flex; gap: 8px; flex-shrink: 0; }
+
+  .tb-btn {
+    border: none; border-radius: 14px; padding: 10px 18px;
+    font-size: 1em; font-weight: 700; cursor: pointer;
+    color: #fff; display: flex; align-items: center; gap: 6px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+    transition: transform 0.1s, box-shadow 0.1s;
+    min-height: 44px; min-width: 44px; justify-content: center;
+    -webkit-user-select: none; user-select: none;
+  }
+  .tb-btn:active { transform: scale(0.94); box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+  .tb-btn.connect { background: linear-gradient(135deg, #ff8f00, #f4511e); }
+  .tb-btn.connect.connected { background: linear-gradient(135deg, #43a047, #2e7d32); }
+  .tb-btn.run { background: linear-gradient(135deg, #43a047, #1b5e20); }
+  .tb-btn.run:disabled { background: #9e9e9e; cursor: not-allowed; }
+  .tb-btn.stop { background: linear-gradient(135deg, #e53935, #b71c1c); }
+  .tb-btn.stop:disabled { background: #9e9e9e; cursor: not-allowed; }
+
+  .status-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #ef5350; display: inline-block; flex-shrink: 0;
+  }
+  .status-dot.on { background: #66bb6a; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ===== MAIN AREA ===== */
+  #main {
+    flex: 1; display: flex; flex-direction: column;
+    overflow: hidden; position: relative;
+  }
+  #blocklyArea {
+    flex: 1; position: relative; min-height: 0;
+  }
+  #blocklyDiv {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  }
+
+  /* ===== CONSOLE ===== */
+  #consolePanel {
+    height: 120px; flex-shrink: 0;
+    background: #263238; color: #b2ff59;
+    font-family: 'Courier New', Courier, monospace; font-size: 0.85em;
+    overflow-y: auto; padding: 8px 12px;
+    border-top: 3px solid #6a1b9a;
+    -webkit-overflow-scrolling: touch;
+  }
+  #consolePanel .log-line { padding: 2px 0; word-break: break-all; }
+  #consolePanel .log-line.error { color: #ef5350; }
+  #consolePanel .log-line.success { color: #69f0ae; }
+  #consolePanel .log-line.info { color: #80d8ff; }
+
+  /* ===== RESIZE HANDLE ===== */
+  #resizeHandle {
+    height: 18px; flex-shrink: 0; cursor: ns-resize;
+    background: #37474f; display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  #resizeHandle::after {
+    content: ''; width: 40px; height: 4px; border-radius: 2px; background: #78909c;
+  }
+
+  /* ===== RUNNING OVERLAY ===== */
+  #runOverlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.35); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  #runOverlay.visible { display: flex; }
+  #runOverlay .card {
+    background: #fff; border-radius: 20px; padding: 30px 40px; text-align: center;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  }
+  #runOverlay .card .spinner {
+    width: 48px; height: 48px; border: 5px solid #e0e0e0;
+    border-top-color: #6a1b9a; border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #runOverlay .card p { font-size: 1.2em; font-weight: 700; color: #333; margin-bottom: 16px; }
+  #runOverlay .card button {
+    background: #e53935; color: #fff; border: none; border-radius: 12px;
+    padding: 12px 32px; font-size: 1.1em; font-weight: 700; cursor: pointer;
+    min-height: 44px;
+  }
+
+  /* ===== TABLET TWEAKS ===== */
+  @media (max-width: 768px) {
+    #toolbar .title { font-size: 1em; }
+    .tb-btn { padding: 8px 12px; font-size: 0.9em; border-radius: 12px; }
+  }
+  @media (min-width: 1024px) {
+    #main { flex-direction: row; }
+    #blocklyArea { flex: 1; }
+    #resizeHandle {
+      width: 18px; height: auto; cursor: ew-resize; flex-direction: column;
+    }
+    #resizeHandle::after { width: 4px; height: 40px; }
+    #consolePanel {
+      width: 280px; height: auto; border-top: none; border-left: 3px solid #6a1b9a;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <span class="title">🤖 DidaCubes Block Coder</span>
+  <div class="btn-group">
+    <button class="tb-btn connect" id="btnConnect" onclick="connectHub()">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="connectLabel">Connect</span>
+    </button>
+    <button class="tb-btn run" id="btnRun" onclick="runProgram()">
+      ▶ Run
+    </button>
+    <button class="tb-btn stop" id="btnStop" onclick="stopProgram()" disabled>
+      ■ Stop
+    </button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="blocklyArea">
+    <div id="blocklyDiv"></div>
+  </div>
+  <div id="resizeHandle"></div>
+  <div id="consolePanel">
+    <div class="log-line info">👋 Welcome to DidaCubes Block Coder!</div>
+    <div class="log-line info">Tap <b>Connect</b> to pair with your hub.</div>
+  </div>
+</div>
+
+<!-- RUN OVERLAY -->
+<div id="runOverlay">
+  <div class="card">
+    <div class="spinner"></div>
+    <p>Running your program…</p>
+    <button onclick="stopProgram()">■ Stop</button>
+  </div>
+</div>
+
+<!-- BLOCKLY TOOLBOX -->
+<xml id="toolbox" style="display:none">
+  <category name="🔌 Connection" colour="#FF6F00">
+    <block type="connect_hub"></block>
+  </category>
+  <category name="⚙️ Motors" colour="#1565C0">
+    <block type="set_motor">
+      <field name="PORT">1</field>
+      <value name="SPEED">
+        <shadow type="math_number"><field name="NUM">50</field></shadow>
+      </value>
+    </block>
+    <block type="stop_motor">
+      <field name="PORT">1</field>
+    </block>
+    <block type="stop_all"></block>
+  </category>
+  <category name="⏱️ Control" colour="#7B1FA2">
+    <block type="wait_seconds">
+      <value name="SECONDS">
+        <shadow type="math_number"><field name="NUM">1</field></shadow>
+      </value>
+    </block>
+    <block type="repeat_times">
+      <value name="TIMES">
+        <shadow type="math_number"><field name="NUM">3</field></shadow>
+      </value>
+    </block>
+  </category>
+</xml>
+
+<script>
+// ================================================================
+//  BLE STATE
+// ================================================================
+let bleDevice = null;
+let bleServer = null;
+let writeChar = null;
+let readChar = null;
+let isConnected = false;
+let isRunning = false;
+let stopRequested = false;
+
+const SERVICE_UUID = 0xFFE0;
+const WRITE_CHAR_UUID = '0000ffe2-0000-1000-8000-00805f9b34fb';
+const READ_CHAR_UUID  = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+// ================================================================
+//  LOGGING
+// ================================================================
+function log(msg, type) {
+  const panel = document.getElementById('consolePanel');
+  const div = document.createElement('div');
+  div.className = 'log-line' + (type ? ' ' + type : '');
+  div.textContent = msg;
+  panel.appendChild(div);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ================================================================
+//  PACKET BUILDER
+// ================================================================
+function buildDataPacket(payload) {
+  const len = payload.length + 1;
+  let xor = len;
+  for (const b of payload) xor ^= b;
+  return new Uint8Array([0x45, len, ...payload, xor & 0xFF]);
+}
+
+function buildMotorSpeed(port, speed) {
+  speed = Math.max(-100, Math.min(100, Math.round(speed)));
+  const speedByte = speed < 0 ? (256 + speed) : speed;
+  const payload = [0x00, 0x02, 0x00, 0x01, 0x00, port === 1 ? 0x01 : 0x02,
+                   0x65, 0x01, port, 0x31, speedByte & 0xFF];
+  return buildDataPacket(payload);
+}
+
+// ================================================================
+//  BLE WRITE HELPER
+// ================================================================
+async function bleSend(data) {
+  if (!writeChar) throw new Error('Not connected');
+  await writeChar.writeValueWithoutResponse(data);
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ================================================================
+//  INIT SEQUENCE
+// ================================================================
+async function initHub() {
+  log('Sending init sequence…', 'info');
+
+  // 1. SETCONNECTINTERVAL
+  await bleSend(new Uint8Array([0x46, 0x04, 0x00, 0x25, 0x01, 0x20]));
+  log('  ✓ SETCONNECTINTERVAL');
+  await sleep(300);
+
+  // 2. ARANGE ×3
+  const arangePacket = buildDataPacket([0x00, 0xAA, 0x00, 0x01, 0xFF, 0xFF, 0x21, 0x00, 0x00]);
+  for (let i = 0; i < 3; i++) {
+    await bleSend(arangePacket);
+    log('  ✓ ARANGE ' + (i + 1) + '/3');
+    await sleep(500);
+  }
+
+  // 3. GETBATTERY
+  await bleSend(buildDataPacket([0x00, 0x02, 0x00, 0x01, 0x00, 0x01, 0x11]));
+  log('  ✓ GETBATTERY');
+  await sleep(300);
+
+  // 4. Motor config 1
+  await bleSend(new Uint8Array([0x45, 0x0E, 0x00, 0x03, 0x00, 0x01, 0x00, 0x01,
+    0x21, 0x65, 0x01, 0x01, 0x65, 0x02, 0x02, 0x2C]));
+  log('  ✓ Motor config 1');
+  await sleep(300);
+
+  // 5. Motor config 2
+  await bleSend(new Uint8Array([0x45, 0x0E, 0x00, 0x03, 0x00, 0x01, 0x00, 0x03,
+    0x21, 0x65, 0x01, 0x01, 0x65, 0x02, 0x02, 0x2E]));
+  log('  ✓ Motor config 2');
+  await sleep(200);
+
+  log('Init sequence complete! ✅', 'success');
+}
+
+// ================================================================
+//  BLE CONNECT
+// ================================================================
+async function connectHub() {
+  if (isConnected) {
+    // Disconnect
+    try {
+      if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+    } catch (_) {}
+    setDisconnected();
+    log('Disconnected.', 'info');
+    return;
+  }
+
+  log('Scanning for DidaCubes hub…', 'info');
+
+  try {
+    // Attempt connection with fallback chain for Bluefy compatibility
+    let device;
+    try {
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'DIDA' }],
+        optionalServices: [SERVICE_UUID]
+      });
+    } catch (e1) {
+      log('Filter by name failed, trying acceptAllDevices…', 'info');
+      try {
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [SERVICE_UUID]
+        });
+      } catch (e2) {
+        log('acceptAllDevices failed, trying service filter…', 'info');
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE_UUID] }]
+        });
+      }
+    }
+
+    bleDevice = device;
+    log('Device found: ' + (device.name || 'Unknown'), 'success');
+
+    device.addEventListener('gattserverdisconnected', () => {
+      setDisconnected();
+      log('Hub disconnected.', 'error');
+    });
+
+    log('Connecting GATT…', 'info');
+    bleServer = await device.gatt.connect();
+    log('Getting service…', 'info');
+    const service = await bleServer.getPrimaryService(SERVICE_UUID);
+
+    log('Getting characteristics…', 'info');
+    writeChar = await service.getCharacteristic(WRITE_CHAR_UUID);
+    readChar  = await service.getCharacteristic(READ_CHAR_UUID);
+
+    // Subscribe to notifications
+    await readChar.startNotifications();
+    readChar.addEventListener('characteristicvaluechanged', (e) => {
+      const val = new Uint8Array(e.target.value.buffer);
+      const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      log('← ' + hex, 'info');
+    });
+
+    setConnected();
+    log('Connected! ✅', 'success');
+
+    // Run init
+    await initHub();
+
+  } catch (err) {
+    log('Connection failed: ' + err.message, 'error');
+  }
+}
+
+function setConnected() {
+  isConnected = true;
+  document.getElementById('statusDot').classList.add('on');
+  document.getElementById('connectLabel').textContent = 'Disconnect';
+  document.getElementById('btnConnect').classList.add('connected');
+}
+
+function setDisconnected() {
+  isConnected = false;
+  writeChar = null;
+  readChar = null;
+  bleServer = null;
+  document.getElementById('statusDot').classList.remove('on');
+  document.getElementById('connectLabel').textContent = 'Connect';
+  document.getElementById('btnConnect').classList.remove('connected');
+}
+
+// ================================================================
+//  RUNTIME API (called by generated code)
+// ================================================================
+const DidaCubes = {
+  async connect() {
+    if (!isConnected) await connectHub();
+  },
+  async setMotor(port, speed) {
+    if (stopRequested) throw new Error('__STOP__');
+    if (!writeChar) { log('⚠️ Not connected!', 'error'); return; }
+    speed = Math.max(-100, Math.min(100, Math.round(speed)));
+    log('Motor ' + (port === 1 ? 'A' : 'B') + ' → ' + speed + '%');
+    await bleSend(buildMotorSpeed(port, speed));
+  },
+  async stopMotor(port) {
+    if (stopRequested) throw new Error('__STOP__');
+    if (!writeChar) { log('⚠️ Not connected!', 'error'); return; }
+    log('Stop motor ' + (port === 1 ? 'A' : 'B'));
+    await bleSend(buildMotorSpeed(port, 0));
+  },
+  async stopAll() {
+    if (!writeChar) { log('⚠️ Not connected!', 'error'); return; }
+    log('Stop all motors');
+    await bleSend(buildMotorSpeed(1, 0));
+    await sleep(50);
+    await bleSend(buildMotorSpeed(2, 0));
+  },
+  async wait(seconds) {
+    if (stopRequested) throw new Error('__STOP__');
+    log('Wait ' + seconds + 's…');
+    const end = Date.now() + seconds * 1000;
+    while (Date.now() < end) {
+      if (stopRequested) throw new Error('__STOP__');
+      await sleep(100);
+    }
+  }
+};
+
+// ================================================================
+//  BLOCKLY BLOCK DEFINITIONS
+// ================================================================
+Blockly.defineBlocksWithJsonArray([
+  // Connect Hub
+  {
+    type: 'connect_hub',
+    message0: '🔌 Connect to DIDA Hub',
+    previousStatement: null,
+    nextStatement: null,
+    colour: '#FF6F00',
+    tooltip: 'Connect to the DidaCubes hub via Bluetooth',
+    helpUrl: ''
+  },
+  // Set Motor
+  {
+    type: 'set_motor',
+    message0: '⚙️ Set motor %1 speed to %2 %%',
+    args0: [
+      {
+        type: 'field_dropdown',
+        name: 'PORT',
+        options: [['Port A', '1'], ['Port B', '2']]
+      },
+      {
+        type: 'input_value',
+        name: 'SPEED',
+        check: 'Number'
+      }
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    colour: '#1565C0',
+    tooltip: 'Set motor speed (-100 to 100)',
+    helpUrl: ''
+  },
+  // Stop Motor
+  {
+    type: 'stop_motor',
+    message0: '🛑 Stop motor %1',
+    args0: [
+      {
+        type: 'field_dropdown',
+        name: 'PORT',
+        options: [['Port A', '1'], ['Port B', '2']]
+      }
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    colour: '#1565C0',
+    tooltip: 'Stop one motor',
+    helpUrl: ''
+  },
+  // Stop All
+  {
+    type: 'stop_all',
+    message0: '🛑 Stop ALL motors',
+    previousStatement: null,
+    nextStatement: null,
+    colour: '#C62828',
+    tooltip: 'Stop both motors',
+    helpUrl: ''
+  },
+  // Wait Seconds
+  {
+    type: 'wait_seconds',
+    message0: '⏱️ Wait %1 seconds',
+    args0: [
+      {
+        type: 'input_value',
+        name: 'SECONDS',
+        check: 'Number'
+      }
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    colour: '#7B1FA2',
+    tooltip: 'Pause for some seconds',
+    helpUrl: ''
+  },
+  // Repeat Times
+  {
+    type: 'repeat_times',
+    message0: '🔁 Repeat %1 times',
+    args0: [
+      {
+        type: 'input_value',
+        name: 'TIMES',
+        check: 'Number'
+      }
+    ],
+    message1: '%1',
+    args1: [
+      {
+        type: 'input_statement',
+        name: 'DO'
+      }
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    colour: '#7B1FA2',
+    tooltip: 'Repeat blocks a number of times',
+    helpUrl: ''
+  }
+]);
+
+// ================================================================
+//  BLOCKLY CODE GENERATORS
+// ================================================================
+// Use javascript generator
+const jsGen = javascript.javascriptGenerator;
+jsGen.STATEMENT_PREFIX = 'if(stopRequested) throw new Error("__STOP__");\n';
+
+jsGen.forBlock['connect_hub'] = function(block) {
+  return 'await DidaCubes.connect();\n';
+};
+
+jsGen.forBlock['set_motor'] = function(block) {
+  const port = block.getFieldValue('PORT');
+  const speed = jsGen.valueToCode(block, 'SPEED', javascript.Order.ATOMIC) || '0';
+  return 'await DidaCubes.setMotor(' + port + ', ' + speed + ');\n';
+};
+
+jsGen.forBlock['stop_motor'] = function(block) {
+  const port = block.getFieldValue('PORT');
+  return 'await DidaCubes.stopMotor(' + port + ');\n';
+};
+
+jsGen.forBlock['stop_all'] = function(block) {
+  return 'await DidaCubes.stopAll();\n';
+};
+
+jsGen.forBlock['wait_seconds'] = function(block) {
+  const secs = jsGen.valueToCode(block, 'SECONDS', javascript.Order.ATOMIC) || '1';
+  return 'await DidaCubes.wait(' + secs + ');\n';
+};
+
+let _loopCounter = 0;
+jsGen.forBlock['repeat_times'] = function(block) {
+  const times = jsGen.valueToCode(block, 'TIMES', javascript.Order.ATOMIC) || '1';
+  const branch = jsGen.statementToCode(block, 'DO');
+  const varName = '_loop' + (_loopCounter++);
+  return 'for (let ' + varName + ' = 0; ' + varName + ' < ' + times + '; ' + varName + '++) {\n' + branch + '}\n';
+};
+
+// ================================================================
+//  BLOCKLY WORKSPACE
+// ================================================================
+let workspace;
+
+function initBlockly() {
+  workspace = Blockly.inject('blocklyDiv', {
+    toolbox: document.getElementById('toolbox'),
+    theme: Blockly.Themes.Classic,
+    grid: { spacing: 25, length: 3, colour: '#ccc', snap: true },
+    zoom: { controls: true, wheel: false, startScale: 1.0, maxScale: 2, minScale: 0.5, scaleSpeed: 1.1, pinch: true },
+    trashcan: true,
+    move: { scrollbars: true, drag: true, wheel: false },
+    renderer: 'zelos',
+    sounds: false
+  });
+
+  // Load saved workspace
+  try {
+    const saved = localStorage.getItem('dida_blockly_workspace');
+    if (saved) {
+      const dom = Blockly.utils.xml.textToDom(saved);
+      Blockly.Xml.domToWorkspace(dom, workspace);
+    }
+  } catch (e) { /* ignore */ }
+
+  // Auto-save
+  workspace.addChangeListener(() => {
+    try {
+      const dom = Blockly.Xml.workspaceToDom(workspace);
+      const text = Blockly.Xml.domToText(dom);
+      localStorage.setItem('dida_blockly_workspace', text);
+    } catch (e) { /* ignore */ }
+  });
+}
+
+// ================================================================
+//  RUN / STOP
+// ================================================================
+async function runProgram() {
+  if (isRunning) return;
+  isRunning = true;
+  stopRequested = false;
+  document.getElementById('btnRun').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  document.getElementById('runOverlay').classList.add('visible');
+
+  log('▶ Running program…', 'success');
+
+  try {
+    jsGen.INFINITE_LOOP_TRAP = null;
+    _loopCounter = 0;
+    const code = jsGen.workspaceToCode(workspace);
+    log('--- Generated Code ---', 'info');
+    code.split('\n').filter(l => l.trim()).forEach(l => log('  ' + l.trim(), 'info'));
+    log('--- Executing ---', 'info');
+
+    // stopRequested is a global var, so the STATEMENT_PREFIX check works
+    // We wrap in an async function that has access to the global scope
+    const asyncBody = '(async function() {\n' + code + '\n})()';
+    await eval(asyncBody);
+
+    if (!stopRequested) log('✅ Program finished!', 'success');
+  } catch (err) {
+    if (err.message === '__STOP__') {
+      log('⏹ Program stopped by user.', 'info');
+    } else {
+      log('❌ Error: ' + err.message, 'error');
+    }
+  }
+
+  // Ensure motors stop
+  if (isConnected && writeChar) {
+    try {
+      stopRequested = false; // temporarily allow stopAll to work
+      await DidaCubes.stopAll();
+    } catch (_) {}
+  }
+
+  isRunning = false;
+  stopRequested = false;
+  document.getElementById('btnRun').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+  document.getElementById('runOverlay').classList.remove('visible');
+}
+
+function stopProgram() {
+  if (!isRunning) return;
+  stopRequested = true;
+  log('⏹ Stop requested…', 'info');
+}
+
+// ================================================================
+//  RESIZE HANDLE (console panel resize)
+// ================================================================
+(function() {
+  const handle = document.getElementById('resizeHandle');
+  const panel = document.getElementById('consolePanel');
+  let startY, startH, isWide;
+
+  function onStart(e) {
+    isWide = window.innerWidth >= 1024;
+    if (isWide) {
+      startY = (e.touches ? e.touches[0].clientX : e.clientX);
+      startH = panel.offsetWidth;
+    } else {
+      startY = (e.touches ? e.touches[0].clientY : e.clientY);
+      startH = panel.offsetHeight;
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    e.preventDefault();
+    if (isWide) {
+      const dx = (e.touches ? e.touches[0].clientX : e.clientX) - startY;
+      panel.style.width = Math.max(100, startH - dx) + 'px';
+    } else {
+      const dy = (e.touches ? e.touches[0].clientY : e.clientY) - startY;
+      panel.style.height = Math.max(60, startH - dy) + 'px';
+    }
+    Blockly.svgResize(workspace);
+  }
+
+  function onEnd() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onEnd);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+  }
+
+  handle.addEventListener('mousedown', onStart);
+  handle.addEventListener('touchstart', onStart, { passive: false });
+})();
+
+// ================================================================
+//  WINDOW RESIZE
+// ================================================================
+function onResize() {
+  if (workspace) Blockly.svgResize(workspace);
+}
+window.addEventListener('resize', onResize);
+
+// ================================================================
+//  INIT
+// ================================================================
+window.addEventListener('DOMContentLoaded', () => {
+  initBlockly();
+  onResize();
+});
+</script>
+</body>
+</html>
