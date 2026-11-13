@@ -155,3 +155,4 @@ Full protocol details in `DIDA_59D0_handoff_v2.md`.
 This project reverse-engineered the BLE protocol of a discontinued Chinese STEM robotics kit. The original app (DidaCoding) was delisted from app stores when the company (Didacubes) shut down. Through BLE sniffing, APK decompilation, and protocol analysis, we recovered the full command set and built a replacement controller as a TurboWarp extension.
 
 Date: November 12, 2026
+
