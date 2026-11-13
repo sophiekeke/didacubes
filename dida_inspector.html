@@ -289,10 +289,26 @@ async function doConnect() {
     setStatus('Requesting device…');
     log('ℹ️', 'Requesting BLE device with namePrefix "DIDA" and service 0xFFE0…');
 
-    bleDevice = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'DIDA' }],
-      optionalServices: SERVICE_UUIDS
-    });
+    // Try multiple connection methods for browser compatibility (Chrome vs Bluefy)
+    try {
+      bleDevice = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'DIDA' }],
+        optionalServices: SERVICE_UUIDS
+      });
+    } catch (e1) {
+      log('ℹ️', 'Filter method failed, trying acceptAllDevices…');
+      try {
+        bleDevice = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: SERVICE_UUIDS
+        });
+      } catch (e2) {
+        log('ℹ️', 'acceptAllDevices failed, trying service filter…');
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [0xFFE0] }]
+        });
+      }
+    }
 
     log('ℹ️', `Device selected: ${bleDevice.name} (ID: ${bleDevice.id})`);
     bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
